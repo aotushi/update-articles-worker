@@ -146,8 +146,8 @@ export default {
 					const body = JSON.parse(text);
 					
 					// 验证必要的参数
-					if (!body.jsonData) {
-						return new Response("Missing required parameters: prompt and jsonData", {status: 400});
+					if (!body.jsonData || !body.siteDescription) {
+						return new Response("Missing required parameters: jsonData and siteDescription", {status: 400});
 					}
 
 					// 构建提示词
@@ -155,6 +155,9 @@ export default {
 					let prompt = '';
 					if (path === '/update-long-tail-titles') {
 						prompt = `You are a SEO expert specializing in generating long tail keywords. Your task is to generate 1 new long tail title for each item in the provided JSON data.
+
+						Website Description:
+						${body.siteDescription}
 
 						Input Data Structure:
 						[
@@ -178,7 +181,8 @@ export default {
 							- The new title MUST be directly related to the original title's topic and should not introduce unrelated subjects or product categories.
 							- Match the style and format of existing titles in longTailTitleArr
 							- Complement existing titles (provide different angles or aspects)
-							- MUST maintain consistency with the website's main theme
+							- MUST maintain consistency with the website's main theme as described above
+							- MUST align with the website's overall content strategy and target audience
 						3. CRITICAL ID REQUIREMENT:
 							- The id field in the output MUST be EXACTLY the same as the id in the input
 							- DO NOT modify the id format or create new semantic ids
