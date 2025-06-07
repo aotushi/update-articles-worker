@@ -1,0 +1,51 @@
+/**
+ * For more details on how to configure Wrangler, refer to:
+ * https://developers.cloudflare.com/workers/wrangler/configuration/
+ */
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"name": "update-articles-worker",
+	"main": "src/index.js",
+	"compatibility_date": "2025-06-03",
+	"observability": {
+		"enabled": true
+	},
+	/**
+	 * Smart Placement
+	 * Docs: https://developers.cloudflare.com/workers/configuration/smart-placement/#smart-placement
+	 */
+	// "placement": { "mode": "smart" },
+
+	/**
+	 * Bindings
+	 * Bindings allow your Worker to interact with resources on the Cloudflare Developer Platform, including
+	 * databases, object storage, AI inference, real-time communication and more.
+	 * https://developers.cloudflare.com/workers/runtime-apis/bindings/
+	 */
+
+	/**
+	 * Environment Variables
+	 * https://developers.cloudflare.com/workers/wrangler/configuration/#environment-variables
+	 */
+	"vars": {
+		"API_KEY": "no-access-without-5927",
+		"API_BASE_URL": "",
+		"ARTICLE_GENERATION_PROMPT": "Generate an SEO-optimized Markdown document of approximately 1200 words based on the provided title.\n\nFirst, generate the Frontmatter at the top of the article in the following format (separated by three dashes):\n---\n\ntitle: \"[body.title]\"\ntitleSlug: \"[body.titleSlug]\"\ndescription: \"[Document description, within 150 characters, including the current article's long-tail keyword]\"\ndate: \"[YYYY-MM-DD]\"\ncategory: \"[body.category]\"\ncategorySlug: \"[body.categorySlug]\"\nimage: \"https://placehold.co/400x200?text=[Current Article Title]\"\nimageAlt: \"[Banner image alt description, concise content description using 1-2 core keywords, no more than 4 words]\"\n---\n\nNote: The frontmatter must be in strict YAML format. Do not add any commas after values. Each field should be on its own line with no trailing commas.\n\n#### Basic Requirements:\n\n1. Format: Markdown (.md)\n2. Total Word Count: Approximately 1200 words\n3. Tone: Concise, friendly, professional, suitable for general readers\n4. Target Audience: Matches title search intent\n5. Search Intent: \"Identify and focus on one primary search intent (informational), optimize content around this intent\"\n\n#### Content Structure:\n\n1. **Brief Overview** (100-150 words):\n   - Summarize core value\n   - Naturally incorporate main keyword\n   - Include 3-5 \"Key Points\" summary box\n\n2. **Main Content** (approximately 1000 words):\n   - Provide article content in paragraphs and list format\n   - Use clear H2, H3, or H4 heading hierarchy\n   - H2 headings must include keyword or variations\n   - Each paragraph no more than 5 sentences, 20 lines on mobile\n   - Use bullet points or numbered lists for readability, symbols and titles on same line\n   - Naturally incorporate keywords, avoid keyword stuffing\n   - Use bold, italic, highlight tags to emphasize key concepts (1-2 per paragraph)\n\n3. **Differentiated Content**:\n   - Provide at least 2 points of differentiated value from first-page search results\n   - Include unique insights or latest industry trends\n\n#### Enhanced Elements\n\n1. **E-E-A-T Enhancement**:\n   - Demonstrate industry expertise and real experience\n   - Cite specific data and actual cases\n   - Provide evidence-based personal opinions\n\n2. **Authoritative Citations** (text description only, no links):\n   - Cite 2-3 authoritative industry sources (published 2023-2025)\n   - Clearly mark data sources and publication dates\n\n3. **Internal Linking Strategy**:\n   - Suggest 3 relevant internal link positions\n   - Provide natural, descriptive anchor text\n   - Specify link target page type (category/related article)\n   - Article category link format: '/categories/[category slug from index.json]'\n   - Article internal link format: '/articles/[convert long-tail keyword title to lowercase, keep English words, connect with hyphens (-), remove punctuation and non-English characters]'\n   - Ensure linked articles and categories exist\n\n4. **FAQ Section**:\n   - 3-4 questions based on real search intent\n   - Each answer 50-80 words, directly addressing the question\n   - Structured in FAQ Schema format\n\n5. **CTA Conclusion**:\n   - Clear next-step action suggestions\n   - Encourage reader interaction (comments/share/subscribe)\n   - Provide extended reading suggestions\n\n#### SEO Optimization Requirements\n\n##### Keyword Strategy\n- Naturally incorporate main keyword (3-5 times) and secondary keywords (1-2 times each)\n- Use at least 2 related long-tail keywords (especially in H2/H3 headings)\n- Use LSI keywords and semantically related terms\n- Use main keyword in opening and closing paragraphs\n\n##### Content Quality\n- Ensure 100% original content, provide value through unique angles or latest information\n- Directly address reader's search questions, no filler content\n- Use clear language, provide explanations for technical content\n- Ensure high readability suitable for target audience\n\n##### Technical Optimization\n- Use semantic HTML5 markup to enhance content structure\n- Ensure all content and formatting is mobile-first\n- Suggest appropriate structured data types (Article/FAQ/HowTo)\n\n##### Timeliness and Scalability\n- Clearly mark content publication/update date\n- Note information timeliness and update frequency recommendations\n- Provide 2-3 expandable related subtopics for future updates\n\nEnsure content flows naturally, provides real value to readers, and follows modern Google SEO best practices. Final content should prioritize user needs before search engine optimization."
+	},
+	/**
+	 * Note: Use secrets to store sensitive data.
+	 * https://developers.cloudflare.com/workers/configuration/secrets/
+	 */
+
+	/**
+	 * Static Assets
+	 * https://developers.cloudflare.com/workers/static-assets/binding/
+	 */
+	// "assets": { "directory": "./public/", "binding": "ASSETS" },
+
+	/**
+	 * Service Bindings (communicate between multiple Workers)
+	 * https://developers.cloudflare.com/workers/wrangler/configuration/#service-bindings
+	 */
+	// "services": [{ "binding": "MY_SERVICE", "service": "my-service" }]
+}
