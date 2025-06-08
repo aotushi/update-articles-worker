@@ -146,8 +146,14 @@ export default {
 					const body = JSON.parse(text);
 					
 					// 验证必要的参数
-					if (!body.jsonData || !body.siteDescription) {
-						return new Response("Missing required parameters: jsonData and siteDescription", {status: 400});
+					if (path === '/update-long-tail-titles') {
+						if (!body.jsonData || !body.siteDescription) {
+							return new Response("Missing required parameters: jsonData and siteDescription", {status: 400});
+						}
+					} else if (path === '/generate-articles-by-new-tail-titles') {
+						if (!body.jsonData || !body.jsonData.title || !body.jsonData.titleSlug || !body.jsonData.category || !body.jsonData.categorySlug) {
+							return new Response("Missing required parameters: title, titleSlug, category, categorySlug", {status: 400});
+						}
 					}
 
 					// 构建提示词
@@ -218,11 +224,6 @@ export default {
 						// 获取环境变量中的基础 prompt
 						let basePrompt = env.ARTICLE_GENERATION_PROMPT;
 						
-						// 验证必要的参数
-						if (!body.jsonData || !body.jsonData.title || !body.jsonData.titleSlug || !body.jsonData.category || !body.jsonData.categorySlug) {
-							return new Response("Missing required parameters: title, titleSlug, category, categorySlug, or description", {status: 400});
-						}
-
 						// 替换 prompt 中的占位符
 						const today = new Date().toISOString().split('T')[0]; // 获取今天的日期 YYYY-MM-DD
 
