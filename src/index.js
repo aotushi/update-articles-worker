@@ -14,9 +14,7 @@ import { GoogleGenAI } from "@google/genai";
 // 首先定义不同任务的配置
 const TASK_CONFIGS = {
 	'update-long-tail-titles': {
-		// model: "gemini-2.0-flash",
-		// model: "gemini-2.5-pro-preview-06-05",
-		model: "gemini-1.5-pro",
+		model: "gemini-2.5-flash-lite",  // 切换到 Flash-Lite：最便宜 + 最大免费配额 (15 RPM, 1000 RPD)
 		generationConfig: {
 			temperature: 0.25,  // Even lower temperature for more deterministic output
 			topK: 15,         // Further reduced to limit token selection
@@ -35,13 +33,12 @@ const TASK_CONFIGS = {
 		]
 	},
 	'generate-articles-by-new-tail-titles': {
-		// model: "gemini-2.5-pro-preview-06-05",
-		model: "gemini-1.5-pro",
+		model: "gemini-2.5-flash-lite",  // 切换到 Flash-Lite：最便宜 + 最大免费配额 (15 RPM, 1000 RPD)
 		generationConfig: {
-			temperature: 0.7,  // 适中的温度，平衡创造性和准确性
-			topK: 40,
-			topP: 0.95,
-			maxOutputTokens: 4096,  // 增加到 4096，确保能生成 1200 字左右的中文文章
+			temperature: 0.4,  // 降低温度以确保更严格遵循格式要求（从 0.7 降至 0.4）
+			topK: 25,          // 减少选择范围以提高一致性（从 40 降至 25）
+			topP: 0.85,        // 降低随机性以确保格式准确（从 0.95 降至 0.85）
+			maxOutputTokens: 4096,  // 保持不变
 		},
 		safetySettings: [
 			{
@@ -78,8 +75,12 @@ async function generateLongContent(ai, prompt, taskType, maxRetries = 3) {
 				safetySettings: config.safetySettings
 			});
 
-			// 删除开头的 markdown 标记
-			const content = response.text.replace(/^```markdown\n/, '');
+			// 删除开头和结尾的代码块标记（支持 ```markdown, ```yml, ```yaml, ```json 等）
+			let content = response.text;
+			// 删除开头的代码块标记
+			content = content.replace(/^```(?:markdown|yml|yaml|json|md)?\n?/, '');
+			// 删除结尾的代码块标记
+			content = content.replace(/\n?```\s*$/, '');
 			return content;
 		} catch (error) {
 			if (error.message.includes('quota') || error.message.includes('rate limit')) {
@@ -106,6 +107,30 @@ function cleanJsonString(str) {
 		console.error('JSON parsing error:', e);
 		return str;
 	}
+}
+
+// 添加清理生成文章内容的函数
+function cleanGeneratedArticle(content) {
+	// 1. 删除所有形式的 /articles/ 和 /categories/ 链接
+	// 格式: [text](/articles/...) 或 [text](/categories/...)
+	content = content.replace(/\[[^\]]+\]\(\/(?:articles|categories)\/[^\)]+\)/g, '');
+
+	// 格式: [/articles/...](text) 或 [/categories/...](text)
+	content = content.replace(/\[\/(?:articles|categories)\/[^\]]+\]\([^\)]+\)/g, '');
+
+	// 格式: [/articles/...] 或 [/categories/...]
+	content = content.replace(/\[\/(?:articles|categories)\/[^\]]+\]/g, '');
+
+	// 格式: `/articles/...` 或 `/categories/...` (反引号包裹)
+	content = content.replace(/`\/(?:articles|categories)\/[^`]+`/g, '');
+
+	// 格式: (/articles/...) 或 (/categories/...) (单独的括号链接)
+	content = content.replace(/\(\/(?:articles|categories)\/[^\)]+\)/g, '');
+
+	// 2. 清理可能产生的多余空行（3个或以上空行变成2个）
+	content = content.replace(/\n{3,}/g, '\n\n');
+
+	return content;
 }
 
 export default {
@@ -181,7 +206,7 @@ export default {
 						Requirements:
 						1. For each item in the JSON data, generate exactly 1 new long tail title.
 						2. Each new title must:
-							- Be between 50-80 characters long
+							- Be between 50 characters long
 							- Be SEO-friendly and attractive
 							- Be unique (no duplicates)
 							- The new title MUST be directly related to the original title's topic and should not introduce unrelated subjects or product categories.
@@ -245,11 +270,11 @@ export default {
 						prompt = basePrompt;
 					}
 
-					// 初始化 Gemini
-					const ai = new GoogleGenAI({ 
-						apiKey: env.Google_API_KEY
+					// 初始化 Gemini (使用 v1 API 版本)
+					const ai = new GoogleGenAI({
+						apiKey: env.Google_API_KEY,
+						apiVersion: 'v1'
 					});
-					
 					// 设置超时
 					const timeoutPromise = new Promise((_, reject) => 
 						setTimeout(() => reject(new Error('Request timeout')), 1000*60)  // 增加到60秒
@@ -283,8 +308,9 @@ export default {
 								}
 							});
 						} else {
-							// 文章生成接口返回 Markdown
-							return new Response(result, {
+							// 文章生成接口返回 Markdown - 先清理内容
+							const cleanedArticle = cleanGeneratedArticle(result);
+							return new Response(cleanedArticle, {
 								status: 200,
 								headers: {
 									'Content-Type': 'text/markdown',
