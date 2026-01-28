@@ -10,6 +10,17 @@
 
 import { GoogleGenAI } from "@google/genai";
 
+// 定义文章内容的 JSON Schema（直接使用 JSON Schema 对象，无需 Zod）
+const articleContentSchema = {
+	type: "object",
+	properties: {
+		content: {
+			type: "string",
+			description: "Complete markdown article content including YAML front matter. Must start with '---' and contain no code block wrappers like ```yaml or ```markdown."
+		}
+	},
+	required: ["content"]
+};
 
 // 首先定义不同任务的配置
 const TASK_CONFIGS = {
@@ -39,6 +50,9 @@ const TASK_CONFIGS = {
 			topK: 25,          // 减少选择范围以提高一致性（从 40 降至 25）
 			topP: 0.85,        // 降低随机性以确保格式准确（从 0.95 降至 0.85）
 			maxOutputTokens: 4096,  // 保持不变
+			// 🔥 添加 Schema 结构化输出支持（直接使用 JSON Schema 对象）
+			responseMimeType: "application/json",
+			responseJsonSchema: articleContentSchema
 		},
 		safetySettings: [
 			{
@@ -65,22 +79,45 @@ const TASK_CONFIGS = {
 async function generateLongContent(ai, prompt, taskType, maxRetries = 3) {
 	let retries = 0;
 	const config = TASK_CONFIGS[taskType];
-	
+
 	while (retries < maxRetries) {
 		try {
 			const response = await ai.models.generateContent({
 				model: config.model,
 				contents: prompt,
-				generationConfig: config.generationConfig,
+				config: config.generationConfig,
 				safetySettings: config.safetySettings
 			});
 
-			// 删除开头和结尾的代码块标记（支持 ```markdown, ```yml, ```yaml, ```json 等）
 			let content = response.text;
-			// 删除开头的代码块标记
-			content = content.replace(/^```(?:markdown|yml|yaml|json|md)?\n?/, '');
-			// 删除结尾的代码块标记
-			content = content.replace(/\n?```\s*$/, '');
+
+			// 🔥 如果是文章生成任务，使用 JSON Schema 解析
+			if (taskType === 'generate-articles-by-new-tail-titles') {
+				try {
+					// 解析 JSON 响应
+					const jsonResult = JSON.parse(content);
+					content = jsonResult.content || content;
+				} catch (jsonError) {
+					// 如果 JSON 解析失败，记录日志但继续使用原始内容
+					console.warn('JSON parsing failed, using raw content:', jsonError.message);
+				}
+			}
+
+			// 🔥 增强的清理逻辑（作为兜底方案）
+			// 1. 移除所有独立的代码块标记行
+			content = content.replace(/^```\w*\n/gm, '');  // 移除开头标记
+			content = content.replace(/\n```\s*$/gm, '');  // 移除结尾标记
+
+			// 2. 移除中间位置的独立代码块标记
+			content = content.replace(/\n```\w*\n/g, '\n');
+
+			// 3. 确保开头就是 front matter
+			content = content.trim();
+			if (!content.startsWith('---')) {
+				// 如果还有残留的代码块标记，继续清理
+				content = content.replace(/^[^-]*?(---)/s, '$1');
+			}
+
 			return content;
 		} catch (error) {
 			if (error.message.includes('quota') || error.message.includes('rate limit')) {
@@ -261,8 +298,31 @@ export default {
 							.replace(/\[body\.categorySlug\]/g, body.jsonData.categorySlug)
 							.replace(/\[Current Article Title\]/g, body.jsonData.title);
 
-						// 添加内容格式要求
-						basePrompt += "\n\nImportant: Only return the article content in Markdown format. Do not include any schema, JSON, or other metadata formats. The response should start with the front matter (---) and end with the article content.";
+						// 🔥 添加 Schema 结构化输出格式要求
+						basePrompt += `
+
+CRITICAL OUTPUT FORMAT REQUIREMENTS (Schema-Based):
+1. You MUST return a JSON object with the following structure:
+   {
+     "content": "your complete markdown article here"
+   }
+
+2. The "content" field must contain the complete Markdown article with YAML front matter
+3. DO NOT wrap the markdown content inside the "content" field with code blocks
+4. The markdown content in "content" must start directly with "---" (front matter delimiter)
+
+5. CORRECT JSON response example:
+   {
+     "content": "---\\ntitle: \\"Article Title\\"\\ntitleSlug: \\"article-title\\"\\n---\\n# Article Title\\n\\nYour article content here..."
+   }
+
+6. INCORRECT response examples (DO NOT USE):
+   ❌ {"content": "\`\`\`yaml\\n---\\ntitle: \\"Article Title\\"\\n---\\n\`\`\`"}
+   ❌ {"content": "\`\`\`markdown\\n# Article\\n\`\`\`"}
+   ❌ Content without JSON wrapper
+
+7. The response should be valid JSON that can be parsed with JSON.parse()
+`;
 
 						// 添加分类信息验证要求
 						basePrompt += "\n\nCategory Information:\n- The article MUST be categorized under: " + body.jsonData.category + "\n- The category slug MUST be: " + body.jsonData.categorySlug + "\n- Do not modify or change these values in the generated content.";
