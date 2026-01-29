@@ -16,7 +16,7 @@ const articleContentSchema = {
 	properties: {
 		content: {
 			type: "string",
-			description: "Complete markdown article content including YAML front matter. Must start with '---' and contain no code block wrappers like ```yaml or ```markdown."
+			description: "The complete markdown article content with YAML frontmatter"
 		}
 	},
 	required: ["content"]
@@ -104,12 +104,12 @@ async function generateLongContent(ai, prompt, taskType, maxRetries = 3) {
 			}
 
 			// 🔥 增强的清理逻辑（作为兜底方案）
-			// 1. 移除所有独立的代码块标记行
-			content = content.replace(/^```\w*\n/gm, '');  // 移除开头标记
+			// 1. 移除所有独立的代码块标记行（考虑空格）
+			content = content.replace(/^```\s*\w*\s*\n/gm, '');  // 移除开头标记
 			content = content.replace(/\n```\s*$/gm, '');  // 移除结尾标记
 
 			// 2. 移除中间位置的独立代码块标记
-			content = content.replace(/\n```\w*\n/g, '\n');
+			content = content.replace(/\n```\s*\w*\s*\n/g, '\n');
 
 			// 3. 确保开头就是 front matter
 			content = content.trim();
@@ -117,6 +117,22 @@ async function generateLongContent(ai, prompt, taskType, maxRetries = 3) {
 				// 如果还有残留的代码块标记，继续清理
 				content = content.replace(/^[^-]*?(---)/s, '$1');
 			}
+
+			// 🔥 新增：如果正文中有多余的 --- 行，替换为水平线
+			const lines = content.split('\n');
+			let frontmatterCount = 0;
+			const cleanedLines = lines.map(line => {
+				if (line.trim() === '---') {
+					frontmatterCount++;
+					if (frontmatterCount <= 2) {
+						return line; // 保留前两个 ---
+					} else {
+						return '***'; // 将多余的 --- 替换为水平线
+					}
+				}
+				return line;
+			});
+			content = cleanedLines.join('\n');
 
 			return content;
 		} catch (error) {
@@ -171,13 +187,13 @@ function cleanGeneratedArticle(content) {
 }
 
 export default {
-	
+
 	async fetch(request, env, ctx) {
 
 		// verify api key
 		const apiKey = request.headers.get("X-API-Key");
 		if (!apiKey || apiKey !== env.API_KEY) {
-			return new Response("Invalid API Key", {status: 401});
+			return new Response("Invalid API Key", { status: 401 });
 		}
 
 		// todo new verify method for token like jwt 
@@ -185,11 +201,12 @@ export default {
 		// resolve the request url
 		const url = new URL(request.url);
 		const path = url.pathname;
-		
+
 		try {
 			// verify the request method
 			if (request.method !== 'POST') {
-				return new Response("Invalid request method", {status: 405,
+				return new Response("Invalid request method", {
+					status: 405,
 					headers: {
 						'Allow': 'POST',
 						'Access-Control-Allow-Origin': origin
@@ -202,24 +219,24 @@ export default {
 					const text = await request.text();
 
 					if (!text) {
-						return new Response('empty request body', {status: 400});
+						return new Response('empty request body', { status: 400 });
 					}
-					
+
 					const body = JSON.parse(text);
-					
+
 					// 验证必要的参数
 					if (path === '/update-long-tail-titles') {
 						if (!body.jsonData || !body.siteDescription) {
-							return new Response("Missing required parameters: jsonData and siteDescription", {status: 400});
+							return new Response("Missing required parameters: jsonData and siteDescription", { status: 400 });
 						}
 					} else if (path === '/generate-articles-by-new-tail-titles') {
 						if (!body.jsonData || !body.jsonData.title || !body.jsonData.titleSlug || !body.jsonData.category || !body.jsonData.categorySlug) {
-							return new Response("Missing required parameters: title, titleSlug, category, categorySlug", {status: 400});
+							return new Response("Missing required parameters: title, titleSlug, category, categorySlug", { status: 400 });
 						}
 					}
 
 					// 构建提示词
-					
+
 					let prompt = '';
 					if (path === '/update-long-tail-titles') {
 						prompt = `You are a SEO expert specializing in generating long tail keywords. Your task is to generate 1 new long tail title for each item in the provided JSON data.
@@ -285,7 +302,7 @@ export default {
 					} else if (path === '/generate-articles-by-new-tail-titles') {
 						// 获取环境变量中的基础 prompt
 						let basePrompt = env.ARTICLE_GENERATION_PROMPT;
-						
+
 						// 替换 prompt 中的占位符
 						const today = new Date().toISOString().split('T')[0]; // 获取今天的日期 YYYY-MM-DD
 
@@ -298,34 +315,13 @@ export default {
 							.replace(/\[body\.categorySlug\]/g, body.jsonData.categorySlug)
 							.replace(/\[Current Article Title\]/g, body.jsonData.title);
 
-						// 🔥 添加 Schema 结构化输出格式要求
-						basePrompt += `
 
-CRITICAL OUTPUT FORMAT REQUIREMENTS (Schema-Based):
-1. You MUST return a JSON object with the following structure:
-   {
-     "content": "your complete markdown article here"
-   }
-
-2. The "content" field must contain the complete Markdown article with YAML front matter
-3. DO NOT wrap the markdown content inside the "content" field with code blocks
-4. The markdown content in "content" must start directly with "---" (front matter delimiter)
-
-5. CORRECT JSON response example:
-   {
-     "content": "---\\ntitle: \\"Article Title\\"\\ntitleSlug: \\"article-title\\"\\n---\\n# Article Title\\n\\nYour article content here..."
-   }
-
-6. INCORRECT response examples (DO NOT USE):
-   ❌ {"content": "\`\`\`yaml\\n---\\ntitle: \\"Article Title\\"\\n---\\n\`\`\`"}
-   ❌ {"content": "\`\`\`markdown\\n# Article\\n\`\`\`"}
-   ❌ Content without JSON wrapper
-
-7. The response should be valid JSON that can be parsed with JSON.parse()
-`;
 
 						// 添加分类信息验证要求
 						basePrompt += "\n\nCategory Information:\n- The article MUST be categorized under: " + body.jsonData.category + "\n- The category slug MUST be: " + body.jsonData.categorySlug + "\n- Do not modify or change these values in the generated content.";
+
+						// 🔥 添加简洁的输出格式提示（不重复 schema）
+						basePrompt += "\n\nOutput: Return raw markdown with frontmatter. The frontmatter uses --- delimiters at start and end only.";
 
 						prompt = basePrompt;
 					}
@@ -336,15 +332,15 @@ CRITICAL OUTPUT FORMAT REQUIREMENTS (Schema-Based):
 						apiVersion: 'v1'
 					});
 					// 设置超时
-					const timeoutPromise = new Promise((_, reject) => 
-						setTimeout(() => reject(new Error('Request timeout')), 1000*60)  // 增加到60秒
+					const timeoutPromise = new Promise((_, reject) =>
+						setTimeout(() => reject(new Error('Request timeout')), 1000 * 60)  // 增加到60秒
 					);
-					
+
 					// 调用 API 并处理超时
-					const taskType = path === '/update-long-tail-titles' 
-						? 'update-long-tail-titles' 
+					const taskType = path === '/update-long-tail-titles'
+						? 'update-long-tail-titles'
 						: 'generate-articles-by-new-tail-titles';
-					
+
 					try {
 						const result = await Promise.race([
 							generateLongContent(ai, prompt, taskType),
@@ -388,7 +384,7 @@ CRITICAL OUTPUT FORMAT REQUIREMENTS (Schema-Based):
 							timestamp: new Date().toISOString(),
 							inputLength: body.jsonData ? JSON.stringify(body.jsonData).length : 0
 						});
-						
+
 						// 返回更友好的错误信息
 						return new Response(JSON.stringify({
 							success: false,
@@ -403,11 +399,13 @@ CRITICAL OUTPUT FORMAT REQUIREMENTS (Schema-Based):
 							}
 						});
 					}
-				} catch(error) {
+				} catch (error) {
 					console.log('error>', error);
-					return new Response(error.message, {status: 400, headers: {
-						'Access-Control-Allow-Origin': origin
-					}});
+					return new Response(error.message, {
+						status: 400, headers: {
+							'Access-Control-Allow-Origin': origin
+						}
+					});
 				}
 			}
 
@@ -419,10 +417,10 @@ CRITICAL OUTPUT FORMAT REQUIREMENTS (Schema-Based):
 
 
 
-		} catch(error) {
+		} catch (error) {
 			console.log('error>', error);
-			
-			return new Response(error.message, {status: 500});
+
+			return new Response(error.message, { status: 500 });
 		}
 	}
 };
