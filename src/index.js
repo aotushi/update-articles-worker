@@ -44,15 +44,15 @@ const TASK_CONFIGS = {
 		]
 	},
 	'generate-articles-by-new-tail-titles': {
-		model: "gemini-2.5-flash-lite",  // 切换到 Flash-Lite：最便宜 + 最大免费配额 (15 RPM, 1000 RPD)
+		model: "gemini-2.5-flash",  // 切换到 Flash-Lite：最便宜 + 最大免费配额 (15 RPM, 1000 RPD)
 		generationConfig: {
 			temperature: 0.4,  // 降低温度以确保更严格遵循格式要求（从 0.7 降至 0.4）
 			topK: 25,          // 减少选择范围以提高一致性（从 40 降至 25）
 			topP: 0.85,        // 降低随机性以确保格式准确（从 0.95 降至 0.85）
 			maxOutputTokens: 4096,  // 保持不变
 			// 🔥 添加 Schema 结构化输出支持（直接使用 JSON Schema 对象）
-			responseMimeType: "application/json",
-			responseJsonSchema: articleContentSchema
+			response_mime_type: "application/json",
+			// response_json_schema: articleContentSchema
 		},
 		safetySettings: [
 			{
@@ -316,12 +316,12 @@ export default {
 							.replace(/\[Current Article Title\]/g, body.jsonData.title);
 
 
-
 						// 添加分类信息验证要求
 						basePrompt += "\n\nCategory Information:\n- The article MUST be categorized under: " + body.jsonData.category + "\n- The category slug MUST be: " + body.jsonData.categorySlug + "\n- Do not modify or change these values in the generated content.";
 
-						// 🔥 添加简洁的输出格式提示（不重复 schema）
-						basePrompt += "\n\nOutput: Return raw markdown with frontmatter. The frontmatter uses --- delimiters at start and end only.";
+						// 🔥 添加明确的反格式化指令（参考 Gemini 最佳实践）
+						// 明确禁止 AI 在 content 字段中添加代码块包裹
+						basePrompt += "\n\nCRITICAL: Return ONLY the raw markdown content in the 'content' field. Do NOT include markdown code blocks (```yaml, ```yml, ```markdown, or ```). Do NOT add backticks or any formatting wrappers. The content field must be a plain string.";
 
 						prompt = basePrompt;
 					}
