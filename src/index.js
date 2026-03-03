@@ -50,9 +50,6 @@ const TASK_CONFIGS = {
 			topK: 25,          // 减少选择范围以提高一致性（从 40 降至 25）
 			topP: 0.85,        // 降低随机性以确保格式准确（从 0.95 降至 0.85）
 			maxOutputTokens: 4096,  // 保持不变
-			// 🔥 添加 Schema 结构化输出支持（直接使用 JSON Schema 对象）
-			response_mime_type: "application/json",
-			// response_json_schema: articleContentSchema
 		},
 		safetySettings: [
 			{
@@ -105,7 +102,7 @@ async function generateLongContent(ai, prompt, taskType, maxRetries = 3) {
 
 			// 🔥 增强的清理逻辑（作为兜底方案）
 			// 1. 移除所有独立的代码块标记行（考虑空格）
-			content = content.replace(/^```\s*\w*\s*\n/gm, '');  // 移除开头标记
+			content = content.replace(/^```\s*\w*\s*\n?/gm, '');  // 移除开头标记
 			content = content.replace(/\n```\s*$/gm, '');  // 移除结尾标记
 
 			// 2. 移除中间位置的独立代码块标记
@@ -134,10 +131,21 @@ async function generateLongContent(ai, prompt, taskType, maxRetries = 3) {
 			});
 			content = cleanedLines.join('\n');
 
+			// 只对文章生成任务做 validation
+			if (taskType === 'generate-articles-by-new-tail-titles') {
+				const validation = validateArticleBody(content);
+				if (!validation.valid) {
+					throw new Error(`incomplete_article: ${validation.reason}`);
+				}
+			}
 			return content;
 		} catch (error) {
 			if (error.message.includes('quota') || error.message.includes('rate limit')) {
 				await new Promise(resolve => setTimeout(resolve, 1000 * (retries + 1)));
+				retries++;
+				continue;
+			}
+			if (error.message.includes('incomplete_article')) {
 				retries++;
 				continue;
 			}
@@ -160,6 +168,16 @@ function cleanJsonString(str) {
 		console.error('JSON parsing error:', e);
 		return str;
 	}
+}
+
+// 验证文章正文是否完整
+export function validateArticleBody(content) {
+	const match = content.match(/^---[\s\S]*?---\r?\n([\s\S]*)$/);
+	if (!match) return { valid: false, reason: 'front matter structure broken' };
+	const body = match[1].trim();
+	if (body.length < 500) return { valid: false, reason: `body too short: ${body.length} chars` };
+	if (!body.match(/^#{1,3} /m)) return { valid: false, reason: 'missing heading in body' };
+	return { valid: true };
 }
 
 // 添加清理生成文章内容的函数
